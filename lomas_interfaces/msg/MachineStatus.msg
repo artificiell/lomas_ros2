@@ -1,0 +1,11 @@
+bool  is_synced
+bool  sequens_started
+bool  machine_moving
+uint8 sequense_nr
+uint8 error_nr
+uint16 interval
+float32 x
+float32 y
+float32 z
+builtin_interfaces/Time start_time
+builtin_interfaces/Time finished_time

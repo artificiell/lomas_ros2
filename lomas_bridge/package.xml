@@ -2,10 +2,10 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>lomas_bridge</name>
-  <version>0.0.0</version>
-  <description>TODO: Package description</description>
-  <maintainer email="andreas.persson@oru.se">andreas</maintainer>
-  <license>TODO: License declaration</license>
+  <version>0.0.1</version>
+  <description>ROS2 bridge package for the LOMAS project</description>
+  <maintainer email="andreas.persson@oru.se">Andreas Persson</maintainer>
+  <license>MIT</license>
 
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>

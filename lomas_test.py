@@ -7,7 +7,7 @@ import argparse
 # Main function
 def main(args = None):
     parser = argparse.ArgumentParser(description='This is a basic gcode sender.')
-    parser.add_argument('-p', '--port', help='Input USB port', default = '/dev/ttyUSB0', type = str)  # /dev/ttyUSB0 or /dev/ttyACM0
+    parser.add_argument('-p', '--port', help='Input USB port', default = '/dev/ttyACM0', type = str)  # /dev/ttyUSB0 or /dev/ttyACM0
     parser.add_argument('-b', '--baud', help='Baud rate', default = 115200, type = int)               # 9600 or 115200
     parser.add_argument('-d', '--delay', help='Delay between commands', default = 0, type = int)
     args = parser.parse_args()
@@ -29,21 +29,30 @@ def main(args = None):
 
         # List of commands
         commands = [
+            "G10 P0 L20 X0 Y0 Z0",
+            "G10 P0 L20 X0",
+            "G10 P0 L20 Y0",
+            "G10 P0 L20 Z0",
             "G90",
-            "G0 F8000",
-            "G0 X200 Y200",
-            "G1 F8000",
-            "G1 X350 Y350 Z100",
-            "G1 X1000 Y1000",
-            "G0 Z0",
-            "G0 X10 Y10"
+            "G1 F800",
+            "G1 X5 Y5",
+            "G1 X0 Y0",
+          #  "G1 Y0",
+          #  "G1 Z0",
+          #  "G1 X100",
+          #  "G1 Y100",
+          #  "G1 Z100",
+          #  "G1 X10 Y10 Z10"
+          #  "G1 Y-10",
         ]
+        cnt = 1
         for cmd in commands:
             s.write(cmd + '\n')     # Send g-code block
             grbl_out = s.readline() # Wait for response with carriage return
-            print (' : ' + grbl_out.strip())
-            time.sleep(arg.delay)
-        
+            print (str(cnt) + ' : ' + str(cmd) + ' : ' + grbl_out.strip())
+            time.sleep(args.delay)
+            s.flushInput()      # Flush startup text in serial input
+            cnt = cnt + 1
     except Exception as e:
         print ("Error: %s" % str(e))
         if s is not None:

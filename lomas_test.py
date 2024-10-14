@@ -23,20 +23,21 @@ def main(args = None):
 
         # Wake up
         print ('Sending gcode')
-        s.write("\r\n\r\n") # Hit enter a few times to wake the Printrbot
+        s.write(b"\r\n\r\n") # Hit enter a few times to wake the Printrbot
         time.sleep(2)       # Wait for Printrbot to initialize
         s.flushInput()      # Flush startup text in serial input
 
         # List of commands
         commands = [
-            "G10 P0 L20 X0 Y0 Z0",
-            "G10 P0 L20 X0",
-            "G10 P0 L20 Y0",
-            "G10 P0 L20 Z0",
-            "G90",
-            "G1 F800",
-            "G1 X5 Y5",
-            "G1 X0 Y0",
+            b"G10 P0 L20 X0 Y0 Z0\n",
+            b"G10 P0 L20 X0\n",
+            b"G10 P0 L20 Y0\n",
+            b"G10 P0 L20 Z0\n",
+            b"G90\n",
+            b"G01 F800\n",
+            b"G01 X5 Y5\n",
+            b"G28\n"
+          #  b"G01 X0 Y0\n",
           #  "G1 Y0",
           #  "G1 Z0",
           #  "G1 X100",
@@ -47,9 +48,9 @@ def main(args = None):
         ]
         cnt = 1
         for cmd in commands:
-            s.write(cmd + '\n')     # Send g-code block
+            s.write(cmd)     # Send g-code block
             grbl_out = s.readline() # Wait for response with carriage return
-            print (str(cnt) + ' : ' + str(cmd) + ' : ' + grbl_out.strip())
+            #print (str(cnt) + ' : ' + str(cmd) + ' : ' + grbl_out.strip())
             time.sleep(args.delay)
             s.flushInput()      # Flush startup text in serial input
             cnt = cnt + 1

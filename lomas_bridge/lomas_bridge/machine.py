@@ -22,6 +22,7 @@ class MachineBridge(Node):
         self.declare_parameter('sim_mode', False)
         self.sim_mode = self.get_parameter('sim_mode').value
         self.declare_parameter('port', '/dev/ttyUSB0')
+        self.declare_parameter('baud', 115200)  # Baud rate: 9600 or 115200
         self.declare_parameter('path', '/media/gcode/')
         self.declare_parameter('interval', 120) # Cultivation interval            
         
@@ -34,34 +35,35 @@ class MachineBridge(Node):
         self.get_logger().info('Machine param values:')
         self.get_logger().info(f" * Sim Mode: {self.sim_mode}")
         self.get_logger().info(f" * Port:     {self.get_parameter('port').value}")
+        self.get_logger().info(f" * Baud:     {self.get_parameter('baud').value}")
         self.get_logger().info(f" * Path:     {self.get_parameter('path').value}")
         self.get_logger().info(f" * Interval: {self.get_parameter('interval').value}")
         self.get_logger().info('-------------------------------------')
         
         # Establish serial connection
         self.stream = None
-        self.connect(self.get_parameter('port').value)
+        self.connect(self.get_parameter('port').value, self.get_parameter('baud').value)
 
         # Publish status
         self.publisher.publish(self.status)
         
         # Setup ROS subscribers
-        self.create_subscription(MachineCommand, '/machien/abort', self.abort_callback, 10)
-        self.create_subscription(MachineCommand, '/machien/cmd', self.cmd_callback, 10)
-        self.create_subscription(MachineCommand, '/machien/stop', self.stop_callback, 10)
+        self.create_subscription(MachineCommand, '/machine/abort', self.abort_callback, 10)
+        self.create_subscription(MachineCommand, '/machine/cmd', self.cmd_callback, 10)
+        self.create_subscription(MachineCommand, '/machine/stop', self.stop_callback, 10)
         
         # Register clean-up method
         atexit.register(self.disconnect)
 
     # Method for opening the serial connection
-    def connect(self, port):
+    def connect(self, port, baud):
         self.get_logger().info(f'Opening Serial Port')
         if self.sime_mode:
             self.get_logger().warn(f'Warning : Serial port will be simulated')
             self.status.error_nr = 0
         else:
             try:
-                self.stream = serial.Serial(port, 115200)
+                self.stream = serial.Serial(port, baud)
 
                 # Wake up
                 self.stream.write("\r\n\r\n") # Hit enter a few times to wake the Printrbot
@@ -136,7 +138,7 @@ class MachineBridge(Node):
             self.get_logger().info(f'Stop ')
 
     # Send g-code command
-    def self.send_gcode_cmd(self, cmd):
+    def send_gcode_cmd(self, cmd):
 
         # Publish status
         self.status.sequens_started = True

@@ -18,11 +18,11 @@ class SoilMoisture(Node):
         # Init soil moisture sensor through MCP3002 A/D converter
         channel = self.get_parameter('channel').value
         self.sensor = MCP3002(channel = channel)
-        self.get_logger().info(f"Soil moisture sensor on MCP3002 channel: {channel}")
+        self.get_logger().info(f"Init soil moisture sensor on MCP3002 channel: {channel}")
         
         # Setup ROS publisher
         self.publisher = self.create_publisher(Float32, '/soil/moisture', 10)
-        timer_period = 0.1  # seconds
+        timer_period = 1.0  # seconds
         self.timer = self.create_timer(timer_period, self.callback)
 
     # Read and publish sensor value

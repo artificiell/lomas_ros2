@@ -20,7 +20,8 @@ setup(
     tests_require = ['pytest'],
     entry_points = {
         'console_scripts': [
-            'machine = lomas_bridge.machine:main'
+            'machine = lomas_bridge.machine:main',
+            'converter = lomas_bridge.converter:main'
         ],
     },
 )

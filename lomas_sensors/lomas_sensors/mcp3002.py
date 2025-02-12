@@ -13,7 +13,7 @@ class SoilMoisture(Node):
         super().__init__('soil_moisture_node')
 
         # Declare port parameter
-        self.declare_parameter('channel', 1)
+        self.declare_parameter('channel', 0)
 
         # Init soil moisture sensor through MCP3002 A/D converter
         channel = self.get_parameter('channel').value

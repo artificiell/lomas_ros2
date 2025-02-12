@@ -7,17 +7,17 @@ from launch.substitutions import EnvironmentVariable, LaunchConfiguration, Pytho
 def generate_launch_description():
 
     # Lomas camera node
-    lomas_camera_node = Node(
+    lomas_top_camera_node = Node(
         package = 'camera_ros',
         executable = 'camera_node',
-        name = 'lomas_camera_node',
+        name = 'lomas_top_camera_node',
         remappings = [
-            ('/lomas_camera_node/camera_info', '/lomas/camera/info'),
-            ('/lomas_camera_node/image_raw', '/lomas/camera/image'),
-            ('/lomas_camera_node/image_raw/compressed', '/lomas/camera/image/compressed')
+            ('/lomas_camera_node/camera_info', '/lomas/top/camera/info'),
+            ('/lomas_camera_node/image_raw', '/lomas/top/camera/image'),
+            ('/lomas_camera_node/image_raw/compressed', '/lomas/top/camera/image/compressed')
         ]
     )
 
     return LaunchDescription([
-        lomas_camera_node
+        lomas_top_camera_node
     ])

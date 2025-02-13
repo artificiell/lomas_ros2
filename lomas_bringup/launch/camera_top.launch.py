@@ -11,10 +11,14 @@ def generate_launch_description():
         package = 'camera_ros',
         executable = 'camera_node',
         name = 'lomas_top_camera_node',
+        parameters = [{
+            'width': 800,
+            'height': 600
+        }],
         remappings = [
-            ('/lomas_camera_node/camera_info', '/lomas/top/camera/info'),
-            ('/lomas_camera_node/image_raw', '/lomas/top/camera/image'),
-            ('/lomas_camera_node/image_raw/compressed', '/lomas/top/camera/image/compressed')
+            ('/lomas_top_camera_node/camera_info', '/lomas/top/camera/info'),
+            ('/lomas_top_camera_node/image_raw', '/lomas/top/camera/image'),
+            ('/lomas_top_camera_node/image_raw/compressed', '/lomas/top/camera/image/compressed')
         ]
     )
 

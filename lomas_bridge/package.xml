@@ -2,7 +2,7 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>lomas_bridge</name>
-  <version>0.0.1</version>
+  <version>0.0.2</version>
   <description>ROS2 bridge package for the LOMAS project</description>
   <maintainer email="andreas.persson@oru.se">Andreas Persson</maintainer>
   <license>MIT</license>

@@ -12,9 +12,9 @@ def generate_launch_description():
         executable = 'camera_node',
         name = 'lomas_side_camera_node',
         remappings = [
-            ('/lomas_camera_node/camera_info', '/lomas/side/camera/info'),
-            ('/lomas_camera_node/image_raw', '/lomas/side/camera/image'),
-            ('/lomas_camera_node/image_raw/compressed', '/lomas/side/camera/image/compressed')
+            ('/lomas_side_camera_node/camera_info', '/lomas/side/camera/info'),
+            ('/lomas_side_camera_node/image_raw', '/lomas/side/camera/image'),
+            ('/lomas_side_camera_node/image_raw/compressed', '/lomas/side/camera/image/compressed')
         ]
     )
 

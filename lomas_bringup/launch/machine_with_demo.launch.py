@@ -51,22 +51,9 @@ def generate_launch_description():
         ]
     )
     
-    # Lomas light plug node
-    lomas_light_node = Node(
-        package = 'lomas_bridge',
-        executable = 'light',
-        name = 'light_plug_node',
-        parameters = [{
-            'username': 'andreas.persson@oru.se',
-            'password': 'Lomas2025',
-            'ip_address':  '192.168.0.110'
-        }],
-    )
-
     return LaunchDescription([
         motor_speed_arg,
         lomas_bridge_node,
         lomas_converter_node,
-        lomas_demo_node,
-        lomas_light_node
+        lomas_demo_node
     ])

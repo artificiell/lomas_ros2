@@ -7,9 +7,14 @@ from launch.substitutions import EnvironmentVariable, LaunchConfiguration, Pytho
 def generate_launch_description():
 
     # Launch configuration
+    auto_calibration = LaunchConfiguration('auto_calibration')
     sensor_channel = LaunchConfiguration('sensor_channel')
 
     # Launch arguments
+    auto_calibration_arg = DeclareLaunchArgument(
+        'auto_calibration',
+        default_value = 'true'
+    )
     sensor_channel_arg = DeclareLaunchArgument(
         'sensor_channel',
         default_value = '0'
@@ -21,6 +26,7 @@ def generate_launch_description():
         executable = 'mcp3002',
         name = 'soil_sensor_right_node',
         parameters = [{
+            'calibration': LaunchConfiguration('auto_calibration'),
             'channel': LaunchConfiguration('sensor_channel')
         }],
         remappings = [
@@ -29,6 +35,7 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
+        auto_calibration_arg,
         sensor_channel_arg,
         soil_sensor_node
     ])

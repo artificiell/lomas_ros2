@@ -9,7 +9,8 @@ def generate_launch_description():
     # Launch configuration
     auto_calibration = LaunchConfiguration('auto_calibration')
     sensor_channel = LaunchConfiguration('sensor_channel')
-
+    time_period = LaunchConfiguration('time_period')
+    
     # Launch arguments
     auto_calibration_arg = DeclareLaunchArgument(
         'auto_calibration',
@@ -19,6 +20,10 @@ def generate_launch_description():
         'sensor_channel',
         default_value = '0'
     )
+    time_period_arg = DeclareLaunchArgument(
+        'time_period',
+        default_value = '10.0'
+    )
  
     # Lomas soil sensor node
     soil_sensor_node = Node(
@@ -27,7 +32,8 @@ def generate_launch_description():
         name = 'soil_sensor_right_node',
         parameters = [{
             'calibration': LaunchConfiguration('auto_calibration'),
-            'channel': LaunchConfiguration('sensor_channel')
+            'channel': LaunchConfiguration('sensor_channel'),
+            'period': LaunchConfiguration('time_period')
         }],
         remappings = [
             ('/soil/moisture', '/lomas/soil/moisture/right')
@@ -37,5 +43,6 @@ def generate_launch_description():
     return LaunchDescription([
         auto_calibration_arg,
         sensor_channel_arg,
+        time_period_arg,
         soil_sensor_node
     ])

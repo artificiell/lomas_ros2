@@ -15,6 +15,7 @@ class SoilMoisture(Node):
         # Declare port parameter
         self.declare_parameter('calibration', False)
         self.declare_parameter('channel', 0)
+        self.declare_parameter('period', 1.0)  #  ...time period (seconds)
 
         # Init soil moisture sensor through MCP3002 A/D converter
         channel = self.get_parameter('channel').value
@@ -28,7 +29,8 @@ class SoilMoisture(Node):
             
         # Setup ROS publisher
         self.publisher = self.create_publisher(Float32, '/soil/moisture', 10)
-        timer_period = 1.0  # seconds
+        timer_period = self.get_parameter('period').value
+        self.get_logger().info(f"Publishing soil moisture values every {timer_period} second...")
         self.timer = self.create_timer(timer_period, self.callback)
 
     # Read and publish sensor value
@@ -48,7 +50,7 @@ class SoilMoisture(Node):
 
     # Calibration of sensor value
     def calibrate(self, value):
-        if len(self.min_values) < 10: #  ...maintain a small list of min sensor readings (to prevent jitter)
+        if len(self.min_values) < 100: #  ...maintain a small list of min sensor readings (to prevent jitter)
             self.min_values.append(value)
         elif value < max(self.min_values):
             self.min_values.remove(max(self.min_values))

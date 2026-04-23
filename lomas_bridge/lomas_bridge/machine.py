@@ -62,7 +62,7 @@ class MachineBridge(Node):
             self.status.error_nr = 0
         else:
             try:
-                self.stream = serial.Serial(port, baud)
+                self.stream = serial.Serial(port, baud, timeout = 1) # 1-second timeout
 
                 # Wake up
                 self.stream.write(b'\r\n\r\n') # Hit enter a few times to wake the Printrbot
@@ -88,15 +88,73 @@ class MachineBridge(Node):
     
     # Method for sending serial commands
     def send(self, cmd):
+        grbl_out = b'oMGok\n'
+        if not self.sim_mode and self.stream is not None:
+            try:
+                self.stream.write(cmd)            # Send g-code block
+                grbl_out = self.stream.readline() # Wait for response with carriage return
+
+                if not grbl_out:
+                    self.get_logger().error('Serial read timed out — no response from machine')
+                    self.status.error_nr = 1
+                    self.publisher.publish(self.status)
+                    return False
+
+                #if self._detect_reset(grbl_out):
+                if grbl_out == b'\x00' or b'Grbl' in grbl_out or b'ALARM' in grbl_out: # Detect GRBL reset signatures.
+                    self.get_logger().warn('Machine reset detected — reinitializing')
+                    self.reinitialize()
+                    # Retry the original command once after reinitialization
+                    self.stream.write(cmd)
+                    grbl_out = self.stream.readline()
+
+            except (serial.SerialException, serial.SerialTimeoutException) as e:
+                self.get_logger().error(f'Serial error: {e}')
+                self.status.error_nr = 1
+                self.publisher.publish(self.status)
+                return False
+
+        self.get_logger().info(f' : {grbl_out.strip()}')
+        return grbl_out.strip() == b'ok'
+
+    # Method for reinitialize after a machine reset
+    def reinitialize(self):
+        try:
+            time.sleep(2)  # Wait for GRBL to finish booting
+            self.stream.flushInput()  # Clear any remaining startup messages
+
+            speed = self.get_parameter('speed').value
+            self.send(b'G90\n')                          # Absolute positioning
+            cmd = f'G01 F{speed}\n'
+            self.send(cmd.encode('utf-8'))               # Restore feed rate
+            self.get_logger().info('Machine reinitialized successfully')
+            self.status.error_nr = 0
+            self.publisher.publish(self.status)
+
+        except serial.SerialException as e:
+            self.get_logger().error(f'Reinitialization failed: {e}')
+            self.status.error_nr = 98
+            self.publisher.publish(self.status)
+
+    '''
+    def send(self, cmd):
         grbl_out = 'oMGok\n'
         if not self.sim_mode and self.stream is not None:
             self.stream.write(cmd)            # Send g-code block
             grbl_out = self.stream.readline() # Wait for response with carriage return
+            if not grbl_out:  # Empty bytes = timeout occurred
+                self.get_logger().error('Serial read timed out — no response from machine')
+                self.status.error_nr = 1
+                self.publisher.publish(self.status)
+                return False
         self.get_logger().info(f' : {grbl_out.strip()}')
         if grbl_out == 'oMGok\n':
             return True
         return False
-            
+    '''
+
+
+    
     # Callback method for handle movement commands
     def cmd_callback(self, msg):
         if msg.stop:

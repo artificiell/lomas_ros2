@@ -10,8 +10,10 @@ from lomas_interfaces.msg import MachineCommand
 class LomasDemo(Node):
 
     # Declare constants
-    X = [24, 24,  0,  0, 24, 24,  0]
-    Y = [ 0,  8,  8, 16, 16, 24, 24]
+    #X = [24, 24,  0,  0, 24, 24,  0]
+    #Y = [ 0,  8,  8, 16, 16, 24, 24]
+    X = [1.0, 1.0,  0.0, 0.0, 1.0, 1.0,  0.0, 0.0, 1.0]
+    Y = [0.0, .25,  .25, 0.5, 0.5, 0.75, .75, 1.0, 1.0]
     
     def __init__(self):
         super().__init__('lomas_demo_node')
@@ -52,7 +54,7 @@ class LomasDemo(Node):
         self.x_target, self.y_target = None, None
 
         # Create timer callabck
-        timer_period = 0.5  # seconds
+        timer_period = 0.6  # seconds
         self.timer = self.create_timer(timer_period, self.timer_callback)
 
         
@@ -83,14 +85,17 @@ class LomasDemo(Node):
     # Timed callabck function
     def timer_callback(self) -> None:
         if self.x_target is not None and self.y_target is not None:
+
+            # Move one step toward target (generic)
             if self.y_current < self.y_target:
                 self.y_current += 1
-            elif self.x_target == 25 and self.x_current < self.x_target:
-                self.x_current += 1 
-            elif self.x_target == 0 and self.x_current > self.x_target:
+            elif self.y_current > self.y_target:
+                self.y_current -= 1
+            elif self.x_current < self.x_target:
+                self.x_current += 1
+            elif self.x_current > self.x_target:
                 self.x_current -= 1
-
-
+ 
             # Publish machine command + web state
             self.publish_cmd_and_state(self.x_current, self.y_current, stop = False)
             
@@ -103,14 +108,14 @@ class LomasDemo(Node):
                     self.x_target, self.y_target = None, None
                     self.publish_cmd_and_state(self.x_current, self.y_current, stop = True)
                 else:
-                    self.x_target, self.y_target = self.X[self.idx], self.Y[self.idx]
+                    self.x_target, self.y_target = int(self.X[self.idx] * self.max_x), int(self.Y[self.idx] * self.max_y)
 
                     
     # Callback for start button pressed
     def start_callback(self, msg) -> None:
         if msg.data and self.x_current == 0 and self.y_current == 0: # Data equals to True (= pressed)
             self.idx = 0
-            self.x_target, self.y_target = self.X[self.idx], self.Y[self.idx]
+            self.x_target, self.y_target = int(self.X[self.idx] * self.max_x), int(self.Y[self.idx] * self.max_y)
 
 
     # Callback for stop button pressed

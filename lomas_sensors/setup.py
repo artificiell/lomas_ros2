@@ -20,6 +20,7 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
+            'collection = lomas_sensors.collection:main',
             'mcp3002 = lomas_sensors.mcp3002:main',
             'bme680 = lomas_sensors.bme680:main'
         ],

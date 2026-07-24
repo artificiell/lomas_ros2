@@ -1,4 +1,7 @@
-uint8 x
-uint8 y
-uint8 z
+# lomas_interfaces/MachineCommand
+# ------------------------------------
+float32 x
+float32 y
+float32 z
 bool stop
+

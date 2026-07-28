@@ -20,6 +20,7 @@ setup(
     tests_require = ['pytest'],
     entry_points = {
         'console_scripts': [
+            'collection = lomas_bridge.collection:main',
             'converter = lomas_bridge.converter:main',
             'demo = lomas_bridge.demo:main',
             'light = lomas_bridge.light:main',

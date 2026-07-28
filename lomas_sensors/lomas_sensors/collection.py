@@ -3,7 +3,7 @@ import csv
 import os
 import threading
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from zoneinfo import ZoneInfo
 
 import rclpy
@@ -23,12 +23,13 @@ class DataCollection(Node):
             '/lomas/soil/moisture/right',
         ]
 
+        self._tz = ZoneInfo('Europe/Stockholm')
         self._output_dir = os.path.expanduser('~/data/sensors/')
         os.makedirs(self._output_dir, exist_ok=True)
 
         self._buffers: dict[str, list[tuple[datetime, float]]] = defaultdict(list)
         self._hourly_averages: dict[str, list[tuple[str, float]]] = defaultdict(list)
-        self._current_hour: int = datetime.now(timezone.utc).hour
+        self._current_hour: int = datetime.now(self._tz).hour
         self._lock = threading.Lock()
 
         self._subscribers = []
@@ -57,7 +58,7 @@ class DataCollection(Node):
 
     def _on_message(self, topic: str, value: float):
         """Store an incoming sample with its CET timestamp; check for hour rollover."""
-        now = datetime.now(ZoneInfo('Europe/Stockholm'))
+        now = datetime.now(self._tz)
         with self._lock:
             self._buffers[topic].append((now, value))
             self.get_logger().debug(
@@ -69,7 +70,7 @@ class DataCollection(Node):
 
     def _check_hour_rollover(self):
         """60-second safety-net: flush if the hour has changed between message arrivals."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(self._tz)
         with self._lock:
             if now.hour != self._current_hour:
                 self._flush_hour(self._current_hour)
@@ -84,9 +85,12 @@ class DataCollection(Node):
         Compute per-topic averages for the completed hour, log them, and persist
         them to a date-stamped CSV file. Must be called while the lock is held.
         """
-        now_utc = datetime.now(ZoneInfo('Europe/Stockholm'))
-        date_str = now_utc.strftime('%Y-%m-%d')
-        hour_label = f"{date_str} {previous_hour:02d}:00 CET"
+        # Subtract 1 hour to land inside the completed hour window, so the date
+        # is correct even when flushing just after midnight (e.g. flushing hour
+        # 23 at 00:05 correctly yields date 2026-05-12, not 2026-05-13).
+        completed_hour_dt = datetime.now(self._tz) - timedelta(hours=1)
+        date_str          = completed_hour_dt.strftime('%Y-%m-%d')
+        hour_label        = f"{date_str} {previous_hour:02d}:00 CET"
 
         self.get_logger().info(f"--- Hourly averages for {hour_label} ---")
 
@@ -95,13 +99,13 @@ class DataCollection(Node):
             samples = self._buffers[topic]
             if samples:
                 avg = sum(v for _, v in samples) / len(samples)
-                n = len(samples)
+                n   = len(samples)
                 self.get_logger().info(
                     f"  {topic}: avg = {avg:.4f}  (n={n} samples)"
                 )
             else:
                 avg = None
-                n = 0
+                n   = 0
                 self.get_logger().warning(
                     f"  {topic}: no samples received this hour."
                 )
@@ -119,6 +123,7 @@ class DataCollection(Node):
 
         self._write_csv(date_str, rows)
 
+        
     def _write_csv(self, date_str: str, rows: list[dict]):
         """
         Append hourly-average rows to ~/data/sensors/<date_str>.csv.

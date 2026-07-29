@@ -149,7 +149,7 @@ class CollectionScan(Node):
         x = self._x_start
         while x <= self._max_x:
             if waypoints:                           # every column after the first
-                column_starts.add(len(waypoints))  # index of the first wp in this column
+                column_starts.add(len(waypoints))   # index of the first wp in this column
             y = self._y_start
             while y <= self._max_y:
                 waypoints.append((x, y))

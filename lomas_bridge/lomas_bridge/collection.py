@@ -38,6 +38,7 @@ class CollectionScan(Node):
         self.declare_parameter('quality',            80)    # JPEG quality 1-99 to request compression; 0 (or >=100) = raw image
         self.declare_parameter('max_grab_retries',   1)     # retries for a failed image grab before giving up on a waypoint
         self.declare_parameter('grab_retry_delay_sec', 2.0) # wait before retrying a failed grab
+        self.declare_parameter('grab_timeout_sec',   10.0)  # treat a grab as failed if no response by then
 
         self._max_x        = max(1.0, float(self.get_parameter('machine_max_x').value))
         self._max_y        = max(1.0, float(self.get_parameter('machine_max_y').value))
@@ -54,6 +55,7 @@ class CollectionScan(Node):
         self._quality       = int(self.get_parameter('quality').value)
         self._max_grab_retries    = int(self.get_parameter('max_grab_retries').value)
         self._grab_retry_delay    = float(self.get_parameter('grab_retry_delay_sec').value)
+        self._grab_timeout        = float(self.get_parameter('grab_timeout_sec').value)
 
         # Image grabbing
         self._tz         = ZoneInfo('Europe/Stockholm')
@@ -99,9 +101,11 @@ class CollectionScan(Node):
         self._settling:      bool = False
         self._settle_timer        = None
 
-        # Image-grab retry state
-        self._grab_retry_count = 0
-        self._retry_timer      = None
+        # Image-grab retry/timeout state
+        self._grab_retry_count  = 0
+        self._retry_timer       = None
+        self._grab_timeout_timer = None
+        self._grab_completed    = True  # no grab in flight yet
 
         # Main scan timer (10 Hz)
         self._scan_timer = self.create_timer(0.1, self._timer_callback)
@@ -186,6 +190,10 @@ class CollectionScan(Node):
             if self._retry_timer is not None:
                 self._retry_timer.cancel()
                 self._retry_timer = None
+            if self._grab_timeout_timer is not None:
+                self._grab_timeout_timer.cancel()
+                self._grab_timeout_timer = None
+            self._grab_completed    = True
             self._grab_retry_count = 0
             self._x_current, self._y_current = 0.0, 0.0
             self._x_target, self._y_target   = None, None
@@ -278,10 +286,27 @@ class CollectionScan(Node):
     # ---------------------------------------------------------------------------
 
     def _grab_image(self) -> None:
+        self._grab_completed = False
         req         = Image.Request()
         req.quality = self._quality
         future      = self._cam_client.call_async(req)
         future.add_done_callback(self._handle_image_response)
+
+        # Guard against a request that never completes (e.g. the camera
+        # service is restarting) — without this, a lost response would
+        # stall the whole scan forever at this waypoint.
+        self._grab_timeout_timer = self.create_timer(self._grab_timeout, self._on_grab_timeout)
+
+    def _on_grab_timeout(self) -> None:
+        self._grab_timeout_timer.cancel()
+        self._grab_timeout_timer = None
+        if self._grab_completed:
+            return  # real response already arrived and was handled
+        self._grab_completed = True
+        self.get_logger().error(
+            f"Image grab timed out after {self._grab_timeout:.1f}s (camera service may be restarting)."
+        )
+        self._handle_grab_failure()
 
     def _decode_response_image(self, response):
         """Decode whichever field the server actually populated."""
@@ -290,6 +315,13 @@ class CollectionScan(Node):
         return self._bridge.imgmsg_to_cv2(response.image, desired_encoding='bgr8')
 
     def _handle_image_response(self, future) -> None:
+        if self._grab_completed:
+            return  # the timeout already fired and handled this attempt
+        self._grab_completed = True
+        if self._grab_timeout_timer is not None:
+            self._grab_timeout_timer.cancel()
+            self._grab_timeout_timer = None
+
         success = False
         try:
             response = future.result()
@@ -312,26 +344,28 @@ class CollectionScan(Node):
             self._grabbing = False
             self._advance_waypoint()
         else:
+            self._handle_grab_failure()
 
-            # Retry a failed grab a bounded number of times before giving up on
-            # this waypoint entirely — rather than either hanging indefinitely
-            # or silently skipping on the very first failure.
-            if self._grab_retry_count < self._max_grab_retries:
-                self._grab_retry_count += 1
-                self.get_logger().warn(
-                    f"Retrying image grab ({self._grab_retry_count}/{self._max_grab_retries}) "
-                    f"in {self._grab_retry_delay:.1f}s..."
-                )
-                self._retry_timer = self.create_timer(self._grab_retry_delay, self._retry_grab)
-            else:
-                retries_label = "retry" if self._max_grab_retries == 1 else "retries"
-                self.get_logger().error(
-                    f"Giving up on this waypoint after {self._max_grab_retries} {retries_label} "
-                    f"— moving on without an image."
-                )
-                self._grab_retry_count = 0
-                self._grabbing = False
-                self._advance_waypoint()
+    def _handle_grab_failure(self) -> None:
+        # Retry a failed grab a bounded number of times before giving up on
+        # this waypoint entirely — rather than either hanging indefinitely
+        # or silently skipping on the very first failure.
+        if self._grab_retry_count < self._max_grab_retries:
+            self._grab_retry_count += 1
+            self.get_logger().warn(
+                f"Retrying image grab ({self._grab_retry_count}/{self._max_grab_retries}) "
+                f"in {self._grab_retry_delay:.1f}s..."
+            )
+            self._retry_timer = self.create_timer(self._grab_retry_delay, self._retry_grab)
+        else:
+            retries_label = "retry" if self._max_grab_retries == 1 else "retries"
+            self.get_logger().error(
+                f"Giving up on this waypoint after {self._max_grab_retries} {retries_label} "
+                f"— moving on without an image."
+            )
+            self._grab_retry_count = 0
+            self._grabbing = False
+            self._advance_waypoint()
 
     def _retry_grab(self) -> None:
         self._retry_timer.cancel()

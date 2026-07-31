@@ -35,6 +35,9 @@ class CollectionScan(Node):
         self.declare_parameter('settle_delay_sec',   2.0)   # wait after arriving at a normal waypoint
         self.declare_parameter('column_delay_sec',   10.0)  # wait after arriving at first wp of new column
         self.declare_parameter('end_delay_sec',      5.0)   # wait after arriving at the last waypoint
+        self.declare_parameter('quality',            80)    # JPEG quality 1-99 to request compression; 0 (or >=100) = raw image
+        self.declare_parameter('max_grab_retries',   1)     # retries for a failed image grab before giving up on a waypoint
+        self.declare_parameter('grab_retry_delay_sec', 2.0) # wait before retrying a failed grab
 
         self._max_x        = max(1.0, float(self.get_parameter('machine_max_x').value))
         self._max_y        = max(1.0, float(self.get_parameter('machine_max_y').value))
@@ -48,6 +51,9 @@ class CollectionScan(Node):
         self._column_delay  = float(self.get_parameter('column_delay_sec').value)
         self._end_delay     = float(self.get_parameter('end_delay_sec').value)
         self._service_name  = self.get_parameter('service_name').get_parameter_value().string_value
+        self._quality       = int(self.get_parameter('quality').value)
+        self._max_grab_retries    = int(self.get_parameter('max_grab_retries').value)
+        self._grab_retry_delay    = float(self.get_parameter('grab_retry_delay_sec').value)
 
         # Image grabbing
         self._tz         = ZoneInfo('Europe/Stockholm')
@@ -92,6 +98,10 @@ class CollectionScan(Node):
         self._grabbing:      bool = False
         self._settling:      bool = False
         self._settle_timer        = None
+
+        # Image-grab retry state
+        self._grab_retry_count = 0
+        self._retry_timer      = None
 
         # Main scan timer (10 Hz)
         self._scan_timer = self.create_timer(0.1, self._timer_callback)
@@ -173,6 +183,10 @@ class CollectionScan(Node):
             if self._settle_timer is not None:
                 self._settle_timer.cancel()
                 self._settle_timer = None
+            if self._retry_timer is not None:
+                self._retry_timer.cancel()
+                self._retry_timer = None
+            self._grab_retry_count = 0
             self._x_current, self._y_current = 0.0, 0.0
             self._x_target, self._y_target   = None, None
             self._publish_cmd_and_state(0.0, 0.0, stop=True)
@@ -256,6 +270,7 @@ class CollectionScan(Node):
         self._settle_timer = None
         self._settling     = False
         self._grabbing     = True
+        self._grab_retry_count = 0
         self._grab_image()
 
     # ---------------------------------------------------------------------------
@@ -263,27 +278,65 @@ class CollectionScan(Node):
     # ---------------------------------------------------------------------------
 
     def _grab_image(self) -> None:
-        req    = Image.Request()
-        future = self._cam_client.call_async(req)
+        req         = Image.Request()
+        req.quality = self._quality
+        future      = self._cam_client.call_async(req)
         future.add_done_callback(self._handle_image_response)
 
+    def _decode_response_image(self, response):
+        """Decode whichever field the server actually populated."""
+        if response.compressed.data:
+            return self._bridge.compressed_imgmsg_to_cv2(response.compressed, desired_encoding='bgr8')
+        return self._bridge.imgmsg_to_cv2(response.image, desired_encoding='bgr8')
+
     def _handle_image_response(self, future) -> None:
+        success = False
         try:
             response = future.result()
             if response is None:
                 self.get_logger().error("Camera service returned no response.")
+            elif not response.success:
+                self.get_logger().error("Camera service reported a failed capture.")
             else:
-                img      = self._bridge.imgmsg_to_cv2(response.image, desired_encoding='bgr8')
+                img      = self._decode_response_image(response)
                 filepath = self._build_filepath()
                 cv2.imwrite(filepath, img)
                 self.get_logger().info(f"Image saved: {filepath}")
+                success = True
 
         except Exception as e:
             self.get_logger().error(f"Image grab failed: {e}")
 
-        finally:
+        if success:
+            self._grab_retry_count = 0
             self._grabbing = False
             self._advance_waypoint()
+        else:
+
+            # Retry a failed grab a bounded number of times before giving up on
+            # this waypoint entirely — rather than either hanging indefinitely
+            # or silently skipping on the very first failure.
+            if self._grab_retry_count < self._max_grab_retries:
+                self._grab_retry_count += 1
+                self.get_logger().warn(
+                    f"Retrying image grab ({self._grab_retry_count}/{self._max_grab_retries}) "
+                    f"in {self._grab_retry_delay:.1f}s..."
+                )
+                self._retry_timer = self.create_timer(self._grab_retry_delay, self._retry_grab)
+            else:
+                retries_label = "retry" if self._max_grab_retries == 1 else "retries"
+                self.get_logger().error(
+                    f"Giving up on this waypoint after {self._max_grab_retries} {retries_label} "
+                    f"— moving on without an image."
+                )
+                self._grab_retry_count = 0
+                self._grabbing = False
+                self._advance_waypoint()
+
+    def _retry_grab(self) -> None:
+        self._retry_timer.cancel()
+        self._retry_timer = None
+        self._grab_image()
 
     def _build_filepath(self) -> str:
         timestamp = datetime.now(self._tz).strftime('%Y-%m-%d_%H-%M-%S')

@@ -34,7 +34,7 @@ class LightPlug(Node):
     async def connect(self):
         try:
             client = ApiClient(self.username, self.password)
-            self.device = await client.generic_device(self.ip_address)
+            self.device = await client.p100(self.ip_address)
             info = await self.device.get_device_info()
             self.toggle = info.to_dict()['device_on']
             self.get_logger().info('Connected to light plug device')

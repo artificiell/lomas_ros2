@@ -27,17 +27,15 @@ def generate_launch_description():
             ('/machine/cmd', '/lomas/machine/cmd'),
             ('/machine/status', '/lomas/machine/status'),
         ]
+        respawn = True,
+        respawn_delay = 3.0,
     )
 
-    # Lomas command converter node
-    lomas_converter_node = Node(
+    # Lomas machine parameter store node
+    lomas_store_node = Node(
         package = 'lomas_bridge',
-        executable = 'converter',
-        name = 'command_converter_node',
-        remappings = [
-            ('/converter/cmd', '/lomas/converter/cmd'),
-            ('/machine/cmd', '/lomas/machine/cmd')
-        ]
+        executable = 'store',
+        name = 'machine_position_store_node'
     )
 
     # Lomas light plug node
@@ -51,10 +49,10 @@ def generate_launch_description():
             'ip_address':  '192.168.0.110'
         }],
     )
-
+    
     return LaunchDescription([
         motor_speed_arg,
         lomas_bridge_node,
-        lomas_converter_node,
+        lomas_store_node,
         lomas_light_node
     ])

@@ -24,7 +24,8 @@ setup(
             'converter = lomas_bridge.converter:main',
             'demo = lomas_bridge.demo:main',
             'light = lomas_bridge.light:main',
-            'machine = lomas_bridge.machine:main'
+            'machine = lomas_bridge.machine:main',
+            'store = lomas_bridge.store:main'
         ],
     },
 )

@@ -34,7 +34,16 @@ def generate_launch_description():
         remappings = [
             ('/machine/cmd', '/lomas/machine/cmd'),
             ('/machine/status', '/lomas/machine/status'),
-        ]
+        ],
+        respawn = True,
+        respawn_delay = 3.0,
+    )
+
+    # Lomas machine parameter store node
+    lomas_store_node = Node(
+        package = 'lomas_bridge',
+        executable = 'store',
+        name = 'machine_position_store_node'
     )
 
     # Lomas light plug node
@@ -75,6 +84,7 @@ def generate_launch_description():
         motor_speed_arg,
         service_name_arg,
         lomas_bridge_node,
+        lomas_store_node,
         lomas_light_node,
         lomas_demo_node,
         top_camera_launch

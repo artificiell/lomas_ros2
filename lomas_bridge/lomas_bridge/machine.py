@@ -2,6 +2,8 @@
 import rclpy
 from rclpy.node import Node
 from lomas_interfaces.msg import MachineCommand, MachineStatus
+from rcl_interfaces.srv import GetParameters, SetParameters
+from rcl_interfaces.msg import Parameter, ParameterValue, ParameterType
 
 import atexit
 import serial
@@ -26,6 +28,8 @@ class MachineBridge(Node):
         self.declare_parameter('homing_timeout', 30.0) # Max seconds a homing move may run before it's flagged stalled
         self.declare_parameter('move_timeout', 5.0) # Max seconds a normal move may run before it's flagged stalled
         self.declare_parameter('status_poll_period', 0.25) # Seconds between position polls (assumed default)
+        self.declare_parameter('position_store_node', 'machine_position_store_node') # node holding x/y/z across restarts
+        self.declare_parameter('position_save_period', 1.0) # Min seconds between position-store writes
 
         # Status message and publisher
         self.publisher = self.create_publisher(MachineStatus, '/machine/status', 10)
@@ -40,6 +44,16 @@ class MachineBridge(Node):
 
         # Internal tracking for the position-poll timer; not part of the published message
         self._move_deadline = None
+
+        # Offset added to GRBL's raw position (see _recompute_offset)
+        self._position_offset = (0.0, 0.0, 0.0)
+        self._position_save_period = self.get_parameter('position_save_period').value
+        self._last_save_time = 0.0
+
+        # Parameter clients for position_store (survives our own restarts)
+        store_node = self.get_parameter('position_store_node').value
+        self._store_get_client = self.create_client(GetParameters, f'/{store_node}/get_parameters')
+        self._store_set_client = self.create_client(SetParameters, f'/{store_node}/set_parameters')
 
         self.get_logger().info('Machine param values:')
         self.get_logger().info(f" * Sim Mode: {self.sim_mode}")
@@ -85,6 +99,10 @@ class MachineBridge(Node):
                 # Unlock any alarm left over from a previous limit trip or shutdown
                 self._unlock_alarm()
 
+                # Reconcile against last stored position (handles a GRBL reset too)
+                persisted = self._load_persisted_position()
+                self._recompute_offset(*persisted)
+
                 self.status.error_nr = 0
                 self.status.is_synced = True
                 self.get_logger().info(f'Serial port connected to machine')
@@ -112,6 +130,9 @@ class MachineBridge(Node):
             self.stream.reset_input_buffer()  # Clear any remaining startup messages
 
             self._unlock_alarm() # Actually clear an ALARM lock, not just re-set modal state
+
+            # Reconcile against our last known in-memory position
+            self._recompute_offset(self.status.x, self.status.y, self.status.z)
 
             speed = self.get_parameter('speed').value
             self.send(b'G90\n')                          # Absolute positioning
@@ -182,8 +203,7 @@ class MachineBridge(Node):
             line = self.stream.readline()
             self.get_logger().info(f' $X : {line.strip()}')
 
-    # Method for discarding stale input left over from a previous command,
-    # so a late response can never be misread as the reply to a new one
+    # Discards stale serial input so a late response isn't misread as a new one
     def _drain_stale_input(self):
         if self.sim_mode or self.stream is None:
             return
@@ -191,8 +211,7 @@ class MachineBridge(Node):
         if stale:
             self.get_logger().warn(f'Discarding stale serial input before send: {stale!r}')
 
-    # Method for parsing an 'x,y,z' triple out of a GRBL '?' status report line,
-    # e.g. b'<Idle|MPos:12.500,8.300,0.000|FS:0,0>'
+    # Parses 'MPos:x,y,z' out of a GRBL '?' status report line
     def _parse_mpos(self, line):
         try:
             text = line.decode('utf-8', errors='ignore')
@@ -202,6 +221,80 @@ class MachineBridge(Node):
             return float(x_str), float(y_str), float(z_str)
         except (ValueError, IndexError):
             return None
+
+    # Queries GRBL's raw position (no offset applied)
+    def _query_position(self):
+        if self.sim_mode or self.stream is None:
+            return None
+        self._drain_stale_input()
+        self.stream.write(b'?')
+        time.sleep(0.1)
+        pos = None
+        while self.stream.in_waiting:
+            line = self.stream.readline()
+            found = self._parse_mpos(line)
+            if found is not None:
+                pos = found
+        return pos
+
+    # Sets self._position_offset so raw + offset = ref. Used at connect (GRBL
+    # may have reset) and reinitialize (mid-run reset).
+    def _recompute_offset(self, ref_x, ref_y, ref_z):
+        raw = self._query_position()
+        if raw is not None:
+            self._position_offset = (ref_x - raw[0], ref_y - raw[1], ref_z - raw[2])
+            self.status.x, self.status.y, self.status.z = ref_x, ref_y, ref_z
+            self.get_logger().info(f'Position set to x={ref_x}, y={ref_y}, z={ref_z} (offset={self._position_offset})')
+        else:
+            self._position_offset = (0.0, 0.0, 0.0)
+            self.get_logger().warn('Could not query live position; offset defaults to zero.')
+
+    # Fetches last position from position_store. Blocking, but only called
+    # pre-spin from connect(), so it can't deadlock the executor.
+    def _load_persisted_position(self):
+        if not self._store_get_client.wait_for_service(timeout_sec=2.0):
+            self.get_logger().warn('position_store not available; defaulting to (0,0,0).')
+            return 0.0, 0.0, 0.0
+
+        req = GetParameters.Request()
+        req.names = ['x', 'y', 'z']
+        future = self._store_get_client.call_async(req)
+        rclpy.spin_until_future_complete(self, future, timeout_sec=2.0)
+
+        if not future.done() or future.result() is None:
+            self.get_logger().warn('Failed to fetch persisted position; defaulting to (0,0,0).')
+            return 0.0, 0.0, 0.0
+
+        values = future.result().values
+        return values[0].double_value, values[1].double_value, values[2].double_value
+
+    # Pushes position to position_store. Throttled, fire-and-forget — must
+    # not block, since it's called from poll_status() during normal spinning.
+    def _save_persisted_position(self, x, y, z):
+        now = time.time()
+        if now - self._last_save_time < self._position_save_period:
+            return
+        self._last_save_time = now
+
+        if not self._store_set_client.service_is_ready():
+            return
+
+        req = SetParameters.Request()
+        req.parameters = [self._make_double_param(n, v) for n, v in (('x', x), ('y', y), ('z', z))]
+        future = self._store_set_client.call_async(req)
+        future.add_done_callback(self._handle_save_result)
+
+    def _handle_save_result(self, future):
+        try:
+            result = future.result()
+            if result and not all(r.successful for r in result.results):
+                self.get_logger().warn('position_store rejected one or more parameter updates.')
+        except Exception as e:
+            self.get_logger().warn(f'Failed to persist position: {e}')
+
+    @staticmethod
+    def _make_double_param(name, value):
+        return Parameter(name=name, value=ParameterValue(type=ParameterType.PARAMETER_DOUBLE, double_value=float(value)))
 
         
     # ---------------------------
@@ -260,7 +353,11 @@ class MachineBridge(Node):
                 alarm = True
 
         if pos is not None:
-            self.status.x, self.status.y, self.status.z = pos
+            ox, oy, oz = self._position_offset
+            self.status.x = pos[0] + ox
+            self.status.y = pos[1] + oy
+            self.status.z = pos[2] + oz
+            self._save_persisted_position(self.status.x, self.status.y, self.status.z)
 
         if alarm:
             self.get_logger().error('ALARM detected during move — reinitializing')

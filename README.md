@@ -9,7 +9,7 @@ cameras and a smart plug for the grow light) interface their readings and
 controls through ROS 2 as well. On top of this, the workspace provides nodes for
 scripted demo motion, automated image-collection scans and sensor data logging.
 
-![Figure 1: LOMAS testbed architecture](lomas_images/lomas_testbed_setup.png)
+![Figure 1: LOMAS testbed architecture](lomas_figures/lomas_testbed_setup.png)
 
 *Figure 1. The LOMAS testbed is distributed over several Raspberry Pis. Sensor
 nodes (top) publish readings to the data-collection Pi (`rp50`), which also
